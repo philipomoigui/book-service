@@ -43,22 +43,12 @@ func main() {
 	http.HandleFunc("/books/show", getBook)
 	http.HandleFunc("/books/create", booksCreateForm)
 	http.HandleFunc("/books/create/process", createBookProcess)
+	http.HandleFunc("/books/update", updateBookForm)
+	http.HandleFunc("/books/update/process", booksUpdateProcess)
+	http.HandleFunc("/books/delete/process", booksDeleteProcess)
 
 	fmt.Println("The Server is running.......")
 	http.ListenAndServe(":8081", nil)
-
-	// Routing
-	// func handleRequest() {
-	// 	// r := mux.NewRouter().StrictSlash(true)
-
-	// 	http.HandleFunc("/books", getBooks)
-	// 	// r.HandleFunc("api/v1/books").Methods("POST")
-	// 	// r.HandleFunc("api/v1/books").Methods("PUT")
-	// 	// r.HandleFunc("api/v1/books").Methods("DELETE")
-
-	// 	fmt.Println("The Server is running.......")
-	// 	http.ListenAndServe(":8081", nil)
-	// }
 }
 
 func index(w http.ResponseWriter, r *http.Request) {
@@ -115,7 +105,7 @@ func getBook(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, http.StatusText(400), http.StatusBadRequest)
 	}
 
-	row := db.QueryRow("SELECT * FROM books WHERE authur = $1", published)
+	row := db.QueryRow("SELECT * FROM books WHERE published = $1", published)
 
 	bk := Book{}
 	err := row.Scan(&bk.Id, &bk.Name, &bk.Author, &bk.Published)
@@ -168,4 +158,81 @@ func createBookProcess(w http.ResponseWriter, r *http.Request) {
 	// json.NewEncoder(w).Encode(bk)
 	// confirm execution
 	tpl.ExecuteTemplate(w, "created.gohtml", bk)
+}
+
+func updateBookForm(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "PUT" {
+		http.Error(w, http.StatusText(405), http.StatusMethodNotAllowed)
+	}
+
+	published := r.FormValue("published")
+	if published == "" {
+		http.Error(w, http.StatusText(400), http.StatusBadRequest)
+		return
+	}
+
+	row := db.QueryRow("SELECT * FROM books WHERE isbn = $1", published)
+
+	bk := Book{}
+	err := row.Scan(&bk.Name, &bk.Author, &bk.Published)
+	switch {
+	case err == sql.ErrNoRows:
+		http.NotFound(w, r)
+		return
+	case err != nil:
+		http.Error(w, http.StatusText(500), http.StatusInternalServerError)
+		return
+	}
+	tpl.ExecuteTemplate(w, "update.gohtml", bk)
+}
+
+func booksUpdateProcess(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, http.StatusText(405), http.StatusMethodNotAllowed)
+		return
+	}
+
+	// get form values
+	bk := Book{}
+	bk.Name = r.FormValue("name")
+	bk.Author = r.FormValue("author")
+	bk.Published = r.FormValue("published")
+
+	// validate form values
+	if bk.Name == "" || bk.Author == "" || bk.Published == "" {
+		http.Error(w, http.StatusText(400), http.StatusBadRequest)
+		return
+	}
+
+	// insert values
+	_, err := db.Exec("UPDATE books SET id = $1, name=$2, author=$3, published=$4 WHERE name=$1;", bk.Id, bk.Name, bk.Author, bk.Published)
+	if err != nil {
+		http.Error(w, http.StatusText(500), http.StatusInternalServerError)
+		return
+	}
+
+	// confirm insertion
+	tpl.ExecuteTemplate(w, "updated.gohtml", bk)
+}
+
+func booksDeleteProcess(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		http.Error(w, http.StatusText(405), http.StatusMethodNotAllowed)
+		return
+	}
+
+	published := r.FormValue("published")
+	if isbn == "" {
+		http.Error(w, http.StatusText(400), http.StatusBadRequest)
+		return
+	}
+
+	// delete book
+	_, err := db.Exec("DELETE FROM books WHERE published=$1;", published)
+	if err != nil {
+		http.Error(w, http.StatusText(500), http.StatusInternalServerError)
+		return
+	}
+
+	http.Redirect(w, r, "/books", http.StatusSeeOther)
 }
